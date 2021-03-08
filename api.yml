@@ -15,6 +15,7 @@ services:
       BOOKCOVER_API_URL: http://bookcover-api:4000/graphql
       SEARCH_API_URL: http://search-api:4000/graphql
       USERS_API_URL: http://users-api:4000/graphql
+      GRAPHQL_COOKIE_TOKEN_KEY: graphql_access_token
     deploy:
       mode: replicated
       replicas: 1
@@ -65,8 +66,8 @@ services:
       RAKUTEN_APPLICATION_ID: $RAKUTEN_APPLICATION_ID
       RAKUTEN_APPLICATION_SECRET: $RAKUTEN_APPLICATION_SECRET
       IMAGEPROXY_BASE_URL: http://imageproxy:8080
-      BOOKCOVER_REDIS_CACHE_HOST: bookcover-redis
-      BOOKCOVER_REDIS_CACHE_PORT: 6379
+      REDIS_CACHE_HOST: bookcover-redis
+      REDIS_CACHE_PORT: 6379
     deploy:
       mode: replicated
       replicas: 1
@@ -82,6 +83,14 @@ services:
       - bookcover
     volumes:
       - bookcover-redis-data:/data
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      update_config:
+        parallelism: 1
+        order: start-first
 
   neo4j-api:
     image: ghcr.io/bo2kshelf/neo4j-api:develop
@@ -129,9 +138,8 @@ services:
       - imageproxy
     environment:
       PORT: 4000
+      JWT_SECRET: $USERS_JWT_SECRET
       PRISMA_DATABASE_URL: mysql://${USERS_MYSQL_USER}:${USERS_MYSQL_PASSWORD}@users-mysql:3306/${USERS_MYSQL_DATABASE}
-      NEO4J_USERNAME: $NEO4J_NEO4J_USER
-      NEO4J_PASSWORD: $NEO4J_NEO4J_PASSWORD
     deploy:
       mode: replicated
       replicas: 1
@@ -173,6 +181,11 @@ services:
     networks:
       - api
       - search
+    environment:
+      ELASTICSEARCH_NODE_URI: http://search-elasticsearch:9200
+      ELASTICSEARCH_BOOKS_INDEX: books
+      ELASTICSEARCH_AUTHORS_INDEX: authors
+      ELASTICSEARCH_SERIES_INDEX: series
     deploy:
       mode: replicated
       replicas: 1
