@@ -1,12 +1,35 @@
 version: "3.7"
 
 services:
+  nginx-proxy:
+    image: nginx:1.19
+    ports:
+      - target: 80
+        published: 80
+        mode: ingress
+    networks:
+      - api
+      - imageproxy
+    environment:
+      GATEWAY_URL: http://api-gateway:4000
+      IMAGEPROXY_URL: http://imageproxy:8080
+      API_SERVER_NAME: $API_HOST
+      IMAGEPROXY_SERVER_NAME: $IMAGEPROXY_HOST
+    volumes:
+      - type: bind
+        source: ./nginx/proxy.conf.template
+        target: /etc/nginx/templates/default.template
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      update_config:
+        parallelism: 1
+        order: start-first
+
   api-gateway:
     image: ghcr.io/bo2kshelf/api-gateway:develop
-    ports:
-      - target: 4000
-        published: 4000
-        mode: ingress
     networks:
       - api
     environment:
@@ -65,7 +88,7 @@ services:
       PORT: 4000
       RAKUTEN_APPLICATION_ID: $RAKUTEN_APPLICATION_ID
       RAKUTEN_APPLICATION_SECRET: $RAKUTEN_APPLICATION_SECRET
-      IMAGEPROXY_BASE_URL: http://imageproxy:8080
+      IMAGEPROXY_BASE_URL: http://${IMAGEPROXY_HOST}
       REDIS_CACHE_HOST: bookcover-redis
       REDIS_CACHE_PORT: 6379
     deploy:
