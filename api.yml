@@ -16,9 +16,7 @@ services:
       API_SERVER_NAME: $API_HOST
       IMAGEPROXY_SERVER_NAME: $IMAGEPROXY_HOST
     volumes:
-      - type: bind
-        source: ./nginx/proxy.conf.template
-        target: /etc/nginx/templates/default.template
+      - ./nginx/proxy/templates:/etc/nginx/templates
     deploy:
       mode: replicated
       replicas: 1
@@ -161,6 +159,8 @@ services:
       - imageproxy
     environment:
       PORT: 4000
+      GITHUB_CLIENT_ID: $GITHUB_CLIENT_ID
+      GITHUB_CLIENT_SECRET: $GITHUB_CLIENT_SECRET
       JWT_SECRET: $USERS_JWT_SECRET
       PRISMA_DATABASE_URL: mysql://${USERS_MYSQL_USER}:${USERS_MYSQL_PASSWORD}@users-mysql:3306/${USERS_MYSQL_DATABASE}
     deploy:
