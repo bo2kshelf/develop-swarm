@@ -198,10 +198,7 @@ services:
       MYSQL_USER: $USERS_MYSQL_USER
       MYSQL_PASSWORD: $USERS_MYSQL_PASSWORD
     volumes:
-      - users-mysql-data:/var/lib/mysql
-      - ./users-api/migrations:/docker-entrypoint-initdb.d/migrations
-    networks:
-      - users
+      - users-api-mysql-data:/var/lib/mysql
     healthcheck:
       test: "mysqladmin ping -h localhost"
       interval: 10s

@@ -1,3 +1,0 @@
-[submodule "users-api"]
-	path = users-api
-	url = https://github.com/bo2kshelf/users-api.git
