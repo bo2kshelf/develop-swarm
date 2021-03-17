@@ -236,7 +236,7 @@ services:
         target: 4000
         mode: ingress
     environment:
-      ELASTICSEARCH_NODE_URI: http://search-elasticsearch:9200
+      ELASTICSEARCH_NODE_URI: http://search-api-elasticsearch:9200
       ELASTICSEARCH_BOOKS_INDEX: books
       ELASTICSEARCH_AUTHORS_INDEX: authors
       ELASTICSEARCH_SERIES_INDEX: series
