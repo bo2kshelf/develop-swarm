@@ -1,0 +1,7 @@
+server {
+    listen 80;
+    server_name ${IMAGEPROXY_SERVER_NAME};
+    location / {
+        proxy_pass ${IMAGEPROXY_URL};
+    }
+}
