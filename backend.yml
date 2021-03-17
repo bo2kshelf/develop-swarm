@@ -30,7 +30,7 @@ services:
         order: start-first
 
   api-gateway:
-    image: ghcr.io/bo2kshelf/api-gateway:develop@sha256:9e7cdbb5cf4476b246817e681ced9096c6340bdda05f2f0f6ff92cd16221b1b8
+    image: ghcr.io/bo2kshelf/api-gateway:develop@sha256:d3dba208b6c8c47f3814b16f44697c830e6aacd63490b1a0d77d3e24da07c58e
     networks:
       - api
     environment:
@@ -39,7 +39,8 @@ services:
       BOOKCOVER_API_URL: http://bookcover-api:4000/graphql
       SEARCH_API_URL: http://search-api:4000/graphql
       USERS_API_URL: http://users-api:4000/graphql
-      GRAPHQL_COOKIE_TOKEN_KEY: graphql_access_token
+      JWT_SECRET: $API_GATEWAY_JWT_SECRET
+      USER_API_ENDPOINT: http://users-api:4000
     deploy:
       mode: replicated
       replicas: 1
@@ -70,6 +71,11 @@ services:
       - imageproxy
     volumes:
       - imageproxy-redis-data:/data
+    healthcheck: &redis-healthcheck
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
     deploy:
       mode: replicated
       replicas: 1
@@ -80,10 +86,10 @@ services:
         order: start-first
 
   bookcover-api:
-    image: ghcr.io/bo2kshelf/bookcover-api:develop@sha256:b59cddac6444f64b41f057b925497ec1e5e346f5fa389e4625ab22f4e3369e4f
+    image: ghcr.io/bo2kshelf/bookcover-api:develop@sha256:d557ec434e2e91a7f0d34ec800402337d2d4ecaed03b49c4c898343e7338c795
     networks:
       - api
-      - bookcover
+      - bookcover-api
       - imageproxy
     ports:
       - published: ${BOOKCOVER_API_PORT}
@@ -94,8 +100,8 @@ services:
       RAKUTEN_APPLICATION_ID: $RAKUTEN_APPLICATION_ID
       RAKUTEN_APPLICATION_SECRET: $RAKUTEN_APPLICATION_SECRET
       IMAGEPROXY_BASE_URL: http://${IMAGEPROXY_HOST}
-      REDIS_CACHE_HOST: bookcover-redis
-      REDIS_CACHE_PORT: 6379
+      REDIS_HOST: bookcover-api-redis
+      REDIS_PORT: 6379
     deploy:
       mode: replicated
       replicas: 1
@@ -105,12 +111,13 @@ services:
         parallelism: 1
         order: start-first
 
-  bookcover-redis:
+  bookcover-api-redis:
     image: redis:6
     networks:
-      - bookcover
+      - bookcover-api
     volumes:
-      - bookcover-redis-data:/data
+      - bookcover-api-redis-data:/data
+    healthcheck: *redis-healthcheck
     deploy:
       mode: replicated
       replicas: 1
@@ -121,19 +128,19 @@ services:
         order: start-first
 
   neo4j-api:
-    image: ghcr.io/bo2kshelf/neo4j-api@sha256:76448c9672e5525a6741852738fc937a2787ff6565ed2d9c4f67b7a1071b72fd
+    image: ghcr.io/bo2kshelf/neo4j-api:develop@sha256:15ecf203d23c9edca043bf695f46572a6e0634c28ac7b92b6f3ecbaec966439e
     networks:
       - api
-      - neo4j
+      - neo4j-api
     ports:
       - published: ${NEO4J_API_PORT}
         target: 4000
         mode: ingress
     environment:
       PORT: 4000
-      NEO4J_URL: bolt://neo4j-neo4j:7687
-      NEO4J_USERNAME: $NEO4J_NEO4J_USER
-      NEO4J_PASSWORD: $NEO4J_NEO4J_PASSWORD
+      NEO4J_URL: bolt://neo4j-api-neo4j:7687
+      NEO4J_USERNAME: $NEO4J_API_NEO4J_USERNAME
+      NEO4J_PASSWORD: $NEO4J_API_NEO4J_PASSWORD
     deploy:
       mode: replicated
       replicas: 1
@@ -143,16 +150,26 @@ services:
         parallelism: 1
         order: start-first
 
-  neo4j-neo4j:
+  neo4j-api-neo4j:
     image: neo4j:4.2
     networks:
-      - neo4j
+      - neo4j-api
     environment:
-      NEO4J_AUTH: ${NEO4J_NEO4J_USER}/${NEO4J_NEO4J_PASSWORD}
+      NEO4J_AUTH: ${NEO4J_API_NEO4J_USERNAME}/${NEO4J_API_NEO4J_PASSWORD}
       NEO4JLABS_PLUGINS: '["apoc"]'
       NEO4J_apoc_export_file_enabled: "true"
       NEO4J_apoc_import_file_enabled: "true"
       NEO4J_apoc_import_file_use__neo4j__config: "true"
+    volumes:
+      - neo4j-api-neo4j-data:/data
+      - neo4j-api-neo4j-logs:/logs
+      - neo4j-api-neo4j-import:/var/lib/neo4j/import
+      - neo4j-api-neo4j-plugins:/plugins
+    healthcheck: &neo4j-healthcheck
+      test: wget http://localhost:7474/browser -O-
+      interval: 5s
+      timeout: 3s
+      retries: 30
     deploy:
       mode: replicated
       replicas: 1
@@ -163,10 +180,10 @@ services:
         order: start-first
 
   users-api:
-    image: ghcr.io/bo2kshelf/users-api:develop@sha256:1f7072042c6e65a703d5f08a7d1463cbcbfdb36aab00a6fd0ffb987148f49541
+    image: ghcr.io/bo2kshelf/users-api:develop@sha256:959bb3fee62e9accd9d348d6269cef1efab50bde0402136961232481c7bb7a6b
     networks:
       - api
-      - users
+      - users-api
       - imageproxy
     ports:
       - published: ${USERS_API_PORT}
@@ -175,10 +192,8 @@ services:
     environment:
       PORT: 4000
       IMAGEPROXY_BASE_URL: http://${IMAGEPROXY_HOST}
-      GITHUB_CLIENT_ID: $GITHUB_CLIENT_ID
-      GITHUB_CLIENT_SECRET: $GITHUB_CLIENT_SECRET
       JWT_SECRET: $USERS_JWT_SECRET
-      PRISMA_DATABASE_URL: mysql://${USERS_MYSQL_USER}:${USERS_MYSQL_PASSWORD}@users-mysql:3306/${USERS_MYSQL_DATABASE}
+      PRISMA_DATABASE_URL: mysql://root:${USERS_API_MYSQL_ROOT_PASSWORD}@users-api-mysql:3306/${USERS_API_MYSQL_DATABASE}
     deploy:
       mode: replicated
       replicas: 1
@@ -188,18 +203,16 @@ services:
         parallelism: 1
         order: start-first
 
-  users-mysql:
+  users-api-mysql:
     image: mysql:8.0
     networks:
-      - users
+      - users-api
     environment:
-      MYSQL_ROOT_PASSWORD: $USERS_MYSQL_ROOT_PASSWORD
-      MYSQL_DATABASE: $USERS_MYSQL_DATABASE
-      MYSQL_USER: $USERS_MYSQL_USER
-      MYSQL_PASSWORD: $USERS_MYSQL_PASSWORD
+      MYSQL_ROOT_PASSWORD: $USERS_API_MYSQL_ROOT_PASSWORD
+      MYSQL_DATABASE: $USERS_API_MYSQL_DATABASE
     volumes:
       - users-api-mysql-data:/var/lib/mysql
-    healthcheck:
+    healthcheck: &mysql-healthcheck
       test: "mysqladmin ping -h localhost"
       interval: 10s
       timeout: 20s
@@ -217,7 +230,7 @@ services:
     image: ghcr.io/bo2kshelf/search-api:develop
     networks:
       - api
-      - search
+      - search-api
     ports:
       - published: ${SEARCH_API_PORT}
         target: 4000
@@ -236,10 +249,10 @@ services:
         parallelism: 1
         order: start-first
 
-  search-elasticsearch:
+  search-api-elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch-oss:7.9.3
     networks:
-      - search
+      - search-api
     environment:
       discovery.type: single-node
       ES_JAVA_OPTS: -Xms512m -Xmx512m
@@ -248,17 +261,23 @@ services:
         soft: -1
         hard: -1
     volumes:
-      - search-elasticsearch:/usr/share/elasticsearch/data
-    networks:
-      - search
+      - search-api-elasticsearch:/usr/share/elasticsearch/data
     healthcheck:
       test: "curl --fail http://localhost:9200 || exit 1"
       interval: 2s
       timeout: 60s
       retries: 300
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      update_config:
+        parallelism: 1
+        order: start-first
 
   auth-server:
-    image: ghcr.io/bo2kshelf/auth-server:develop@sha256:64f07fe3863d40d5866e31fde0a3a21cb543f447b582499d3d49bc0ebf0ebda7
+    image: ghcr.io/bo2kshelf/auth-server:develop@sha256:09bb11b238d01f68854f69648342263cc54c61469376c31df80cf9be93354b60
     environment:
       PORT: 4000
       USER_API_ENDPOINT: http://users-api:4000
@@ -272,7 +291,15 @@ services:
         mode: ingress
     networks:
       - auth-server
-      - users
+      - users-api
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      update_config:
+        parallelism: 1
+        order: start-first
 
   auth-server-mongo:
     image: mongo:4.4
@@ -284,12 +311,21 @@ services:
       - auth-server
     volumes:
       - auth-server-mongo-data:/data/db
+    healthcheck: &mongo-healthcheck
+      test: test $$(echo "db.runCommand('ping').ok" | mongo --quiet) -eq 1
+      interval: 2s
+      start_period: 30s
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      update_config:
+        parallelism: 1
+        order: start-first
 
   auth-server-postgresql:
     image: postgres:13.2
-    ports:
-      - published: 5432
-        target: 5432
     environment:
       POSTGRES_USER: ${AUTH_SERVER_POSTGRES_USERNAME}
       POSTGRES_PASSWORD: ${AUTH_SERVER_POSTGRES_PASSWORD}
@@ -298,43 +334,57 @@ services:
       - auth-server
     volumes:
       - auth-server-postgresql-data:/var/lib/postgresql/data
+    healthcheck: &postgresql-healthcheck
+      test: ["CMD", "pg_isready"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      update_config:
+        parallelism: 1
+        order: start-first
 
 volumes:
   imageproxy-redis-data:
-  users-mysql-data:
-  bookcover-mysql-data:
-  bookcover-redis-data:
-  neo4j-neo4j-data:
-  neo4j-neo4j-plugins:
-  search-elasticsearch:
+  users-api-mysql-data:
+  bookcover-api-redis-data:
+  neo4j-api-neo4j-data:
+  neo4j-api-neo4j-logs:
+  neo4j-api-neo4j-import:
+  neo4j-api-neo4j-plugins:
+  search-api-elasticsearch:
   auth-server-mongo-data:
   auth-server-postgresql-data:
 
 networks:
-  api:
-    driver: overlay
-    attachable: true
-
-  users:
-    driver: overlay
-    attachable: true
-
-  neo4j:
-    driver: overlay
-    attachable: true
-
-  bookcover:
-    driver: overlay
-    attachable: true
-
-  search:
-    driver: overlay
-    attachable: true
-
   imageproxy:
     driver: overlay
     attachable: true
 
   auth-server:
+    driver: overlay
+    attachable: true
+
+  api:
+    driver: overlay
+    attachable: true
+
+  users-api:
+    driver: overlay
+    attachable: true
+
+  neo4j-api:
+    driver: overlay
+    attachable: true
+
+  bookcover-api:
+    driver: overlay
+    attachable: true
+
+  search-api:
     driver: overlay
     attachable: true
